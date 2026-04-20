@@ -9,11 +9,14 @@
 # MAGIC 2. Stores your EIA API key securely in a Databricks secret scope
 # MAGIC 3. Finds (or creates) a SQL warehouse for the app
 # MAGIC 4. Runs the full data pipeline — ingest, transform, analytics, forecast, internal data
-# MAGIC 5. Deploys the interactive web application
+# MAGIC 5. Deploys the interactive web application and grants it access
 # MAGIC
 # MAGIC **Before you start, you need:**
 # MAGIC - A Databricks workspace with **Unity Catalog** enabled
 # MAGIC - A free EIA API key — get one at [eia.gov/opendata/register.php](https://www.eia.gov/opendata/register.php)
+# MAGIC
+# MAGIC **Permissions required:** `CREATE CATALOG` (or ask your admin to pre-create the catalog).
+# MAGIC If you cannot create catalogs, set the catalog name to one you already have access to.
 # MAGIC
 # MAGIC **Time:** ~10 minutes start to finish.
 
@@ -28,7 +31,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog_name", "siteone_eia", "1. Catalog Name")
+dbutils.widgets.text("catalog_name", "eia_fuel_prices", "1. Catalog Name")
 dbutils.widgets.text("eia_api_key", "", "2. EIA API Key")
 
 CATALOG = dbutils.widgets.get("catalog_name").strip()
@@ -161,11 +164,18 @@ print(f"\n  Pipeline complete — all tables in {CATALOG}.gold are ready.")
 
 # MAGIC %md
 # MAGIC ## Step 6 — Deploy the Web App
-# MAGIC This creates a Databricks App that serves the fuel intelligence dashboard.
+# MAGIC Copies the app to a workspace directory, configures it for this workspace, and deploys it.
 
 # COMMAND ----------
 
-import base64
+import base64, os
+
+user = w.current_user.me()
+username = user.user_name
+
+# App will be deployed from a writable workspace path (Git Folders are read-only)
+APP_NAME = f"{CATALOG.replace('_', '-')}-fuel-intel"
+deploy_dir = f"/Workspace/Users/{username}/{APP_NAME}"
 
 # Build the correct app.yaml with this workspace's warehouse
 app_yaml = f"""command:
@@ -184,38 +194,106 @@ env:
     value: {WAREHOUSE_ID}
 """
 
-# Write the customized app.yaml into the app directory
-# (Git Folders support file writes via the Workspace API)
-app_dir = f"{notebook_dir}/app"
+# Copy app files from the Git Folder to a writable workspace location
+from databricks.sdk.service.workspace import ImportFormat, ObjectType, ExportFormat
 
+source_app_dir = f"{notebook_dir}/app"
+
+def copy_workspace_file(src_path, dst_path):
+    """Copy a file within the workspace using export + import."""
+    exported = w.workspace.export(path=src_path, format=ExportFormat.AUTO)
+    w.workspace.import_(
+        path=dst_path,
+        content=exported.content,
+        format=ImportFormat.AUTO,
+        overwrite=True,
+    )
+
+def copy_workspace_dir(src_dir, dst_dir, files):
+    """Copy specific files from source to destination in workspace."""
+    for rel_path in files:
+        src = f"{src_dir}/{rel_path}"
+        dst = f"{dst_dir}/{rel_path}"
+        # Create parent dirs
+        parent = "/".join(dst.split("/")[:-1])
+        try:
+            w.workspace.mkdirs(parent)
+        except Exception:
+            pass
+        copy_workspace_file(src, dst)
+        print(f"    Copied {rel_path}")
+
+# Files needed for the app deployment
+app_files = [
+    "requirements.txt",
+    "backend/__init__.py",
+    "backend/main.py",
+    "backend/requirements.txt",
+    "frontend/dist/index.html",
+]
+
+# Discover built frontend assets dynamically
+try:
+    dist_assets = w.workspace.list(f"{source_app_dir}/frontend/dist/assets")
+    for obj in dist_assets:
+        rel = obj.path.replace(f"{source_app_dir}/", "")
+        app_files.append(rel)
+except Exception:
+    # Fallback: the dist/assets directory might not be listable, include known patterns
+    print("    Warning: Could not list dist/assets — frontend may need manual copy")
+
+print(f"  Copying app to {deploy_dir}...")
+copy_workspace_dir(source_app_dir, deploy_dir, app_files)
+
+# Write the customized app.yaml (not a copy — generated with correct warehouse ID)
 w.workspace.import_(
+    path=f"{deploy_dir}/app.yaml",
     content=base64.b64encode(app_yaml.encode()).decode(),
-    path=f"{app_dir}/app.yaml",
-    format="AUTO",
+    format=ImportFormat.AUTO,
     overwrite=True,
 )
 print(f"  Configured app.yaml with warehouse {WAREHOUSE_ID}")
 
 # COMMAND ----------
 
-# Create (or update) and deploy the Databricks App
-APP_NAME = f"{CATALOG.replace('_', '-')}-fuel-intel"
+# MAGIC %md
+# MAGIC ## Step 7 — Create App & Grant Permissions
 
+# COMMAND ----------
+
+# Create (or update) and deploy the Databricks App
 try:
-    app = w.apps.get(APP_NAME)
+    app_info = w.apps.get(APP_NAME)
     print(f"  App '{APP_NAME}' already exists — deploying update...")
 except Exception:
     print(f"  Creating app '{APP_NAME}'...")
-    app = w.apps.create_and_wait(
+    app_info = w.apps.create_and_wait(
         name=APP_NAME,
         description="Fuel Price Intelligence Dashboard — EIA data, Prophet forecasts, delivery margin analysis",
     )
     print(f"  App created.")
 
-# Deploy from the app directory in this repo
+# Grant the app's service principal access to the catalog
+# The service principal is created automatically with the app
+sp_id = getattr(app_info, "service_principal_id", None)
+if sp_id:
+    try:
+        sp = w.service_principals.get(sp_id)
+        sp_name = sp.application_id
+        spark.sql(f"GRANT USE CATALOG ON CATALOG {CATALOG} TO `{sp_name}`")
+        spark.sql(f"GRANT USE SCHEMA ON CATALOG {CATALOG} TO `{sp_name}`")
+        spark.sql(f"GRANT SELECT ON CATALOG {CATALOG} TO `{sp_name}`")
+        print(f"  Granted catalog access to app service principal")
+    except Exception as e:
+        print(f"  Warning: Could not auto-grant permissions ({e}).")
+        print(f"  You may need to manually grant SELECT on {CATALOG} to the app's service principal.")
+else:
+    print(f"  Note: Grant SELECT on {CATALOG}.gold to the app's service principal after deployment.")
+
+# Deploy
 deployment = w.apps.deploy_and_wait(
     app_name=APP_NAME,
-    source_code_path=app_dir,
+    source_code_path=deploy_dir,
 )
 print(f"  Deployment status: {deployment.status.state if deployment.status else 'submitted'}")
 
@@ -226,7 +304,11 @@ print(f"  Deployment status: {deployment.status.state if deployment.status else 
 
 # COMMAND ----------
 
-app_url = f"https://{w.config.host.replace('https://', '')}/apps/{APP_NAME}"
+host = w.config.host.rstrip("/")
+if not host.startswith("https://"):
+    host = f"https://{host}"
+app_url = f"{host}/apps/{APP_NAME}"
+
 print("=" * 60)
 print()
 print("  Your Fuel Intelligence Dashboard is live!")
@@ -236,6 +318,7 @@ print()
 print(f"  Catalog:    {CATALOG}")
 print(f"  Warehouse:  {warehouse.name}")
 print()
-print("  To refresh data, re-run this notebook or schedule it as a job.")
+print("  To refresh data, re-run this notebook or schedule")
+print("  notebooks 01-05 as a weekly Databricks Job.")
 print()
 print("=" * 60)

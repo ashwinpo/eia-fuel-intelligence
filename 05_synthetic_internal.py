@@ -14,7 +14,7 @@
 from pyspark.sql import functions as F
 from pyspark.sql.types import *
 
-dbutils.widgets.text("catalog", "siteone_eia", "Catalog Name")
+dbutils.widgets.text("catalog", "eia_fuel_prices", "Catalog Name")
 CATALOG = dbutils.widgets.get("catalog").strip()
 
 ZONES_TABLE = f"{CATALOG}.gold.delivery_zones"

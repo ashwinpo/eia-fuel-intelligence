@@ -9,6 +9,6 @@ resources:
       permission: CAN_USE
 env:
   - name: DATABRICKS_CATALOG
-    value: __CATALOG_NAME__
+    value: eia_fuel_prices
   - name: DATABRICKS_SQL_WAREHOUSE_ID
     value: __WAREHOUSE_ID__

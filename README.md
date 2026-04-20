@@ -32,7 +32,7 @@ Open `00_setup` and fill in the two widgets at the top:
 
 | Widget | Value |
 |--------|-------|
-| **Catalog Name** | Any name you want (default: `siteone_eia`) |
+| **Catalog Name** | Any name you want (default: `eia_fuel_prices`) |
 | **EIA API Key** | Your key from step above |
 
 Click **Run All**.

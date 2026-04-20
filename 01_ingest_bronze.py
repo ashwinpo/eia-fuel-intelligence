@@ -11,8 +11,8 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "siteone_eia", "Catalog Name")
-dbutils.widgets.text("secret_scope", "siteone_eia", "Secret Scope")
+dbutils.widgets.text("catalog", "eia_fuel_prices", "Catalog Name")
+dbutils.widgets.text("secret_scope", "eia_fuel_prices", "Secret Scope")
 
 CATALOG = dbutils.widgets.get("catalog").strip()
 SCOPE = dbutils.widgets.get("secret_scope").strip()

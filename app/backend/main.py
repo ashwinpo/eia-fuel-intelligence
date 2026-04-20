@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-CATALOG = os.getenv("DATABRICKS_CATALOG", "siteone_eia")
+CATALOG = os.getenv("DATABRICKS_CATALOG", "eia_fuel_prices")
 WAREHOUSE_ID = os.getenv("DATABRICKS_SQL_WAREHOUSE_ID")
 if not WAREHOUSE_ID:
     raise RuntimeError("DATABRICKS_SQL_WAREHOUSE_ID environment variable is required. Set it in app.yaml.")
@@ -21,6 +21,15 @@ _client = None
 
 NUMERIC_TYPES = {"BYTE", "SHORT", "INT", "LONG", "FLOAT", "DOUBLE", "DECIMAL"}
 BOOL_TYPES = {"BOOLEAN"}
+
+VALID_PRODUCTS = {"EPM0", "EPMR", "EPMP", "EPD2D", "EPD2DXL0"}
+
+
+def _validate_product(product: str) -> str:
+    """Validate product code against known EIA product codes."""
+    if product not in VALID_PRODUCTS:
+        raise ValueError(f"Invalid product code: {product}")
+    return product
 
 
 def get_client() -> WorkspaceClient:
@@ -112,6 +121,8 @@ def get_snapshot():
 @app.get("/api/trends")
 def get_trends(product: str = "EPMR", weeks: int = 52):
     """Historical price trend for a product."""
+    product = _validate_product(product)
+    weeks = max(1, min(int(weeks), 520))
     return query(f"""
         SELECT price_date, price_per_gallon, wow_change, wow_pct_change, avg_4wk, avg_12wk
         FROM {CATALOG}.gold.weekly_fuel_summary
@@ -124,6 +135,7 @@ def get_trends(product: str = "EPMR", weeks: int = 52):
 @app.get("/api/regional")
 def get_regional(product: str = "EPD2DXL0"):
     """Latest regional price comparison for a product."""
+    product = _validate_product(product)
     return query(f"""
         SELECT area_name, duoarea, price_per_gallon, wow_change, price_date
         FROM {CATALOG}.gold.regional_comparison
@@ -137,6 +149,7 @@ def get_regional(product: str = "EPD2DXL0"):
 @app.get("/api/forecast")
 def get_forecast(product: str = "EPMR"):
     """Actuals + forecast for a product (last 6 months + 8 weeks forward)."""
+    product = _validate_product(product)
     return query(f"""
         SELECT price_date, actual_price, forecast_price, forecast_lower, forecast_upper, is_forecast, product_name
         FROM {CATALOG}.gold.fuel_price_forecast

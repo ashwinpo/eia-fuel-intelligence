@@ -11,7 +11,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog", "siteone_eia", "Catalog Name")
+dbutils.widgets.text("catalog", "eia_fuel_prices", "Catalog Name")
 CATALOG = dbutils.widgets.get("catalog").strip()
 
 GOLD_WEEKLY = f"{CATALOG}.gold.weekly_fuel_summary"
