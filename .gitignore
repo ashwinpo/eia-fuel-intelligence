@@ -1,0 +1,18 @@
+# Environment & secrets
+.env
+*.env
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Databricks workspace sync
+.databricks/sync-snapshots/
+
+# OS
+.DS_Store
+Thumbs.db

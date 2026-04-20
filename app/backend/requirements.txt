@@ -1,0 +1,1 @@
+# Dependencies are managed in the root requirements.txt

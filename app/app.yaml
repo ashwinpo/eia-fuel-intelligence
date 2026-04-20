@@ -1,0 +1,14 @@
+command:
+  - /bin/sh
+  - -c
+  - "python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+resources:
+  - name: sql-warehouse
+    sql_warehouse:
+      id: __WAREHOUSE_ID__
+      permission: CAN_USE
+env:
+  - name: DATABRICKS_CATALOG
+    value: __CATALOG_NAME__
+  - name: DATABRICKS_SQL_WAREHOUSE_ID
+    value: __WAREHOUSE_ID__
