@@ -23,6 +23,20 @@
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Step 0 — Dependencies
+# MAGIC Upgrades `databricks-sdk` to the latest version (required for the Apps API).
+
+# COMMAND ----------
+
+# MAGIC %pip install --upgrade databricks-sdk -q
+
+# COMMAND ----------
+
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Step 1 — Configure
 # MAGIC Fill in the two fields above this cell and hit **Run**.
 # MAGIC
@@ -261,6 +275,8 @@ print(f"  Configured app.yaml with warehouse {WAREHOUSE_ID}")
 
 # COMMAND ----------
 
+from databricks.sdk.service.apps import App, AppDeployment
+
 # Create (or update) and deploy the Databricks App
 try:
     app_info = w.apps.get(APP_NAME)
@@ -268,8 +284,10 @@ try:
 except Exception:
     print(f"  Creating app '{APP_NAME}'...")
     app_info = w.apps.create_and_wait(
-        name=APP_NAME,
-        description="Fuel Price Intelligence Dashboard — EIA data, Prophet forecasts, delivery margin analysis",
+        App(
+            name=APP_NAME,
+            description="Fuel Price Intelligence Dashboard — EIA data, Prophet forecasts, delivery margin analysis",
+        )
     )
     print(f"  App created.")
 
@@ -292,8 +310,8 @@ else:
 
 # Deploy
 deployment = w.apps.deploy_and_wait(
-    app_name=APP_NAME,
-    source_code_path=deploy_dir,
+    APP_NAME,
+    AppDeployment(source_code_path=deploy_dir),
 )
 print(f"  Deployment status: {deployment.status.state if deployment.status else 'submitted'}")
 

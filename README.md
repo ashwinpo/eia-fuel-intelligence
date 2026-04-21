@@ -24,7 +24,7 @@ That's it.
 
 In your Databricks workspace:
 
-**Workspace** → **Repos** → **Add Repo** → paste this repository URL → **Create**
+**Workspace** → **Repos** → **Create Git Folder** → paste this repository URL → **Create**
 
 ### 2. Run the setup notebook
 
